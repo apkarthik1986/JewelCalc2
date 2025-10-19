@@ -249,6 +249,10 @@ def init_session_state():
             'Silver': {'rate': 75.0, 'wastage': 3.0, 'making': 8.0}
         }
     
+    # Custom fields configuration (admin-only feature)
+    if 'custom_metal_fields' not in st.session_state:
+        st.session_state.custom_metal_fields = []  # List of field names
+    
     if 'cgst' not in st.session_state:
         st.session_state.cgst = 1.5
     
@@ -287,117 +291,19 @@ show_user_menu()
 # Main tabs - now including Database and Admin tabs
 if require_admin():
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "⚙️ Settings", "👥 Customers", "📝 Create Invoice", 
-        "📋 View Invoices", "🗄️ Database", "🔐 Admin"
+        "👥 Customers", "📝 Create Invoice", 
+        "📋 View Invoices", "🗄️ Database", "⚙️ Settings", "🔐 Admin"
     ])
 else:
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "⚙️ Settings", "👥 Customers", "📝 Create Invoice", 
-        "📋 View Invoices", "🗄️ Database"
+        "👥 Customers", "📝 Create Invoice", 
+        "📋 View Invoices", "🗄️ Database", "⚙️ Settings"
     ])
 
 # ============================================================================
-# TAB 1: SETTINGS
+# TAB 1: CUSTOMERS
 # ============================================================================
 with tab1:
-    st.markdown("### ⚙️ Base Settings")
-    
-    st.markdown("#### Metal Settings")
-    
-    # Edit metal settings
-    metals_data = []
-    for metal, settings in st.session_state.metal_settings.items():
-        metals_data.append({
-            'Metal': metal,
-            'Rate (per gram)': settings['rate'],
-            'Wastage %': settings['wastage'],
-            'Making %': settings['making']
-        })
-    
-    df_metals = pd.DataFrame(metals_data)
-    edited_metals = st.data_editor(
-        df_metals,
-        num_rows="dynamic",
-        width='stretch',
-        key="metals_editor"
-    )
-    
-    st.markdown("#### Tax Settings")
-    col1, col2 = st.columns(2)
-    with col1:
-        cgst = st.number_input("CGST %", value=st.session_state.cgst, min_value=0.0, format="%.2f")
-    with col2:
-        sgst = st.number_input("SGST %", value=st.session_state.sgst, min_value=0.0, format="%.2f")
-    
-    if st.button("💾 Save Settings", width='stretch'):
-        # Update metal settings
-        new_settings = {}
-        for _, row in edited_metals.iterrows():
-            if row['Metal']:
-                new_settings[row['Metal']] = {
-                    'rate': float(row['Rate (per gram)']),
-                    'wastage': float(row['Wastage %']),
-                    'making': float(row['Making %'])
-                }
-        st.session_state.metal_settings = new_settings
-        st.session_state.cgst = cgst
-        st.session_state.sgst = sgst
-        st.success("✅ Settings saved successfully!")
-    
-    # Reset All Data Section
-    st.markdown("---")
-    st.markdown("#### 🔄 Reset User Database")
-    st.warning("⚠️ **Danger Zone**: This will delete ALL your data including customers and invoices!")
-    
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if 'confirm_reset' not in st.session_state:
-            st.session_state.confirm_reset = False
-        
-        if st.button("🗑️ Reset My Data", type="secondary"):
-            st.session_state.confirm_reset = True
-    
-    with col2:
-        if st.session_state.confirm_reset:
-            st.error("⚠️ Are you absolutely sure? This action CANNOT be undone!")
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                if st.button("✅ YES, DELETE EVERYTHING", type="primary"):
-                    try:
-                        # Delete the database file
-                        db_path = st.session_state.db_path
-                        if os.path.basename(db_path) == db_path and os.path.exists(db_path):
-                            os.remove(db_path)
-                        
-                        # Reset session state
-                        st.session_state.metal_settings = {
-                            'Gold 24K': {'rate': 6500.0, 'wastage': 5.0, 'making': 10.0},
-                            'Gold 22K': {'rate': 6000.0, 'wastage': 6.0, 'making': 12.0},
-                            'Gold 18K': {'rate': 5500.0, 'wastage': 7.0, 'making': 14.0},
-                            'Silver': {'rate': 75.0, 'wastage': 3.0, 'making': 8.0}
-                        }
-                        st.session_state.cgst = 1.5
-                        st.session_state.sgst = 1.5
-                        st.session_state.current_invoice_items = []
-                        st.session_state.selected_customer_id = None
-                        st.session_state.discount = 0.0
-                        st.session_state.confirm_reset = False
-                        
-                        st.success("✅ All data has been reset! The page will reload...")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error resetting data: {str(e)}")
-            
-            with col_b:
-                if st.button("❌ Cancel"):
-                    st.session_state.confirm_reset = False
-                    st.rerun()
-
-
-# ============================================================================
-# TAB 2: CUSTOMERS
-# ============================================================================
-with tab2:
     st.markdown("### 👥 Customer Management")
     
     # Action selector
@@ -422,11 +328,8 @@ with tab2:
                 phone_len = len(phone)
                 if phone_len < 10:
                     st.warning(f"⚠️ {phone_len}/10 digits - Need {10 - phone_len} more")
-                elif phone_len == 10:
-                    if phone.isdigit():
-                        st.success("✅ 10/10 digits - Valid!")
-                    else:
-                        st.error("❌ Only digits allowed")
+                elif phone_len == 10 and not phone.isdigit():
+                    st.error("❌ Only digits allowed")
             address = st.text_area("Address")
         
         if st.button("➕ Add Customer", width='stretch'):
@@ -484,11 +387,8 @@ with tab2:
                             phone_len = len(phone)
                             if phone_len < 10:
                                 st.warning(f"⚠️ {phone_len}/10 digits - Need {10 - phone_len} more")
-                            elif phone_len == 10:
-                                if phone.isdigit():
-                                    st.success("✅ 10/10 digits - Valid!")
-                                else:
-                                    st.error("❌ Only digits allowed")
+                            elif phone_len == 10 and not phone.isdigit():
+                                st.error("❌ Only digits allowed")
                         address = st.text_area("Address", value=customer.get('address', ''))
                     
                     if st.button("💾 Update Customer", width='stretch'):
@@ -561,9 +461,9 @@ with tab2:
 
 
 # ============================================================================
-# TAB 3: CREATE INVOICE
+# TAB 2: CREATE INVOICE
 # ============================================================================
-with tab3:
+with tab2:
     st.markdown("### 📝 Create Invoice")
     
     customers_df = db.get_customers()
@@ -679,10 +579,19 @@ with tab3:
                 
                 st.dataframe(pd.DataFrame(items_display), width='stretch', hide_index=True)
                 
-                # Remove item button
-                if st.button("🗑️ Remove Last Item"):
-                    st.session_state.current_invoice_items.pop()
-                    st.rerun()
+                # Select and delete item
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    item_to_delete = st.selectbox(
+                        "Select item to delete",
+                        options=range(len(st.session_state.current_invoice_items)),
+                        format_func=lambda i: f"Item {i+1}: {st.session_state.current_invoice_items[i]['metal']} - {st.session_state.current_invoice_items[i]['weight']:.3f}g",
+                        key="delete_invoice_item"
+                    )
+                with col2:
+                    if st.button("🗑️ Delete Selected Item", use_container_width=True):
+                        st.session_state.current_invoice_items.pop(item_to_delete)
+                        st.rerun()
                 
                 # Invoice summary
                 st.markdown("#### Invoice Summary")
@@ -733,9 +642,9 @@ with tab3:
 
 
 # ============================================================================
-# TAB 4: VIEW INVOICES
+# TAB 3: VIEW INVOICES
 # ============================================================================
-with tab4:
+with tab3:
     st.markdown("### 📋 View Invoices")
     
     invoices_df = db.get_invoices()
@@ -805,39 +714,34 @@ with tab4:
                 # PDF download (direct download)
                 with col1:
                     pdf_buffer = create_invoice_pdf(invoice, items_df, customer)
-                    st.download_button(
+                    if st.download_button(
                         label="📄 Download PDF",
                         data=pdf_buffer,
                         file_name=f"{row['invoice_no']}.pdf",
                         mime="application/pdf",
                         key=f"dl_{row['invoice_no']}"
-                    )
+                    ):
+                        st.success(f"✅ Invoice {row['invoice_no']}.pdf is ready for download!")
                 
-                # Print (opens in new tab with printer selection)
+                # Delete Invoice
                 with col2:
-                    pdf_buffer_print = create_invoice_pdf(invoice, items_df, customer)
-                    import base64
-                    b64 = base64.b64encode(pdf_buffer_print.read()).decode()
-                    # JavaScript to trigger print dialog which allows printer selection
-                    print_js = f"""
-                    <script>
-                    function printPDF_{row['invoice_no'].replace('-', '_')}() {{
-                        var pdfWindow = window.open("");
-                        pdfWindow.document.write(
-                            "<iframe width='100%' height='100%' src='data:application/pdf;base64,{b64}'></iframe>"
-                        );
-                        setTimeout(function() {{
-                            pdfWindow.print();
-                        }}, 250);
-                    }}
-                    </script>
-                    <button onclick="printPDF_{row['invoice_no'].replace('-', '_')}()" 
-                            style="background-color:#ff4b4b; color:white; border:none; 
-                            padding:0.5rem 1rem; border-radius:0.5rem; cursor:pointer;">
-                        🖨️ Print
-                    </button>
-                    """
-                    st.markdown(print_js, unsafe_allow_html=True)
+                    if st.button("🗑️ Delete Invoice", key=f"delete_{row['invoice_no']}", use_container_width=True):
+                        st.session_state[f'confirm_delete_invoice_{invoice["id"]}'] = True
+                        st.rerun()
+                    
+                    if st.session_state.get(f'confirm_delete_invoice_{invoice["id"]}'):
+                        st.error("⚠️ Are you sure? This cannot be undone!")
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            if st.button("✅ Yes, Delete", key=f"confirm_delete_{row['invoice_no']}", use_container_width=True):
+                                db.delete_invoice(invoice['id'])
+                                del st.session_state[f'confirm_delete_invoice_{invoice["id"]}']
+                                st.success("✅ Invoice deleted!")
+                                st.rerun()
+                        with col_b:
+                            if st.button("❌ Cancel", key=f"cancel_delete_{row['invoice_no']}", use_container_width=True):
+                                del st.session_state[f'confirm_delete_invoice_{invoice["id"]}']
+                                st.rerun()
                 
                 # Thermal print
                 with col3:
@@ -908,7 +812,11 @@ with tab4:
                             edited_df = st.data_editor(
                                 df_edit,
                                 column_config={
-                                    'metal': st.column_config.TextColumn('metal'),
+                                    'metal': st.column_config.SelectboxColumn(
+                                        'metal',
+                                        options=list(st.session_state.metal_settings.keys()),
+                                        required=True
+                                    ),
                                     'weight': st.column_config.NumberColumn('weight', format="%.3f"),
                                     'rate': st.column_config.NumberColumn('rate', format="%.2f"),
                                     'wastage_percent': st.column_config.NumberColumn('wastage_percent', format="%.2f"),
@@ -986,23 +894,8 @@ with tab4:
                         # Persist recalculated rows back to session state
                         st.session_state.temp_edit_items = recalculated_rows
                         
-                        # Display recalculated table (read-friendly)
-                        items_edit_display = []
-                        for i, item in enumerate(recalculated_rows):
-                            items_edit_display.append({
-                                'No.': i + 1,
-                                'Metal': item['metal'],
-                                'Weight': f"{item['weight']:.3f}g",
-                                'Rate': format_currency(item['rate']),
-                                'Item Value': format_currency(item['item_value']),
-                                'Wastage': format_currency(item['wastage_amount']),
-                                'Making': format_currency(item['making_amount']),
-                                'Total': format_currency(item['line_total'])
-                            })
-                        st.dataframe(pd.DataFrame(items_edit_display), width='stretch', hide_index=True)
-                        
                         # Add / remove item buttons (affect session_state.temp_edit_items)
-                        col_a, col_b = st.columns([1, 1])
+                        col_a, col_b, col_c = st.columns([1, 2, 1])
                         with col_a:
                             if st.button("➕ Add Empty Item", key=f"add_empty_{invoice['id']}"):
                                 st.session_state.temp_edit_items.append({
@@ -1018,9 +911,16 @@ with tab4:
                                 })
                                 st.rerun()
                         with col_b:
-                            if st.button("🗑️ Remove Last Item", key=f"remove_last_{invoice['id']}"):
-                                if st.session_state.temp_edit_items:
-                                    st.session_state.temp_edit_items.pop()
+                            if st.session_state.temp_edit_items:
+                                item_to_delete_edit = st.selectbox(
+                                    "Select item to delete",
+                                    options=range(len(st.session_state.temp_edit_items)),
+                                    format_func=lambda i: f"Item {i+1}: {st.session_state.temp_edit_items[i]['metal']} - {st.session_state.temp_edit_items[i]['weight']:.3f}g",
+                                    key=f"delete_edit_item_{invoice['id']}"
+                                )
+                        with col_c:
+                            if st.session_state.temp_edit_items and st.button("🗑️ Delete Selected", key=f"delete_selected_{invoice['id']}", use_container_width=True):
+                                st.session_state.temp_edit_items.pop(item_to_delete_edit)
                                 st.rerun()
                         
                         # Edit discount (live)
@@ -1087,9 +987,9 @@ with tab4:
 
 
 # ============================================================================
-# TAB 5: DATABASE MANAGEMENT
+# TAB 4: DATABASE MANAGEMENT
 # ============================================================================
-with tab5:
+with tab4:
     st.markdown("### 🗄️ Database Management")
     
     from datetime import datetime
@@ -1205,6 +1105,158 @@ with tab5:
                     for error in errors[:5]:
                         st.error(error)
                 st.rerun()
+    
+    st.markdown("---")
+    
+    # Reset User Database Section
+    st.markdown("#### 🔄 Reset User Database")
+    st.warning("⚠️ **Danger Zone**: This will delete ALL your data including customers and invoices!")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if 'confirm_reset' not in st.session_state:
+            st.session_state.confirm_reset = False
+        
+        if st.button("🗑️ Reset My Data", type="secondary"):
+            st.session_state.confirm_reset = True
+    
+    with col2:
+        if st.session_state.confirm_reset:
+            st.error("⚠️ Are you absolutely sure? This action CANNOT be undone!")
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                if st.button("✅ YES, DELETE EVERYTHING", type="primary"):
+                    try:
+                        # Delete the database file
+                        db_path = st.session_state.db_path
+                        if os.path.basename(db_path) == db_path and os.path.exists(db_path):
+                            os.remove(db_path)
+                        
+                        # Reset session state
+                        st.session_state.metal_settings = {
+                            'Gold 24K': {'rate': 6500.0, 'wastage': 5.0, 'making': 10.0},
+                            'Gold 22K': {'rate': 6000.0, 'wastage': 6.0, 'making': 12.0},
+                            'Gold 18K': {'rate': 5500.0, 'wastage': 7.0, 'making': 14.0},
+                            'Silver': {'rate': 75.0, 'wastage': 3.0, 'making': 8.0}
+                        }
+                        st.session_state.cgst = 1.5
+                        st.session_state.sgst = 1.5
+                        st.session_state.current_invoice_items = []
+                        st.session_state.selected_customer_id = None
+                        st.session_state.discount = 0.0
+                        st.session_state.confirm_reset = False
+                        
+                        st.success("✅ All data has been reset! The page will reload...")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error resetting data: {str(e)}")
+            
+            with col_b:
+                if st.button("❌ Cancel"):
+                    st.session_state.confirm_reset = False
+                    st.rerun()
+
+
+# ============================================================================
+# TAB 5: SETTINGS
+# ============================================================================
+with tab5:
+    st.markdown("### ⚙️ Base Settings")
+    
+    st.markdown("#### Metal Settings")
+    
+    # Admin-only: Manage custom fields
+    if require_admin():
+        with st.expander("➕ Manage Custom Fields (Admin Only)"):
+            st.info("💡 Add custom fields to track additional metal properties beyond Rate, Wastage, and Making charges.")
+            
+            # Show current custom fields
+            if st.session_state.custom_metal_fields:
+                st.markdown("**Current Custom Fields:**")
+                for field in st.session_state.custom_metal_fields:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.text(f"• {field}")
+                    with col2:
+                        if st.button("🗑️", key=f"delete_custom_field_{field}"):
+                            st.session_state.custom_metal_fields.remove(field)
+                            # Remove field from all metals
+                            for metal in st.session_state.metal_settings:
+                                if field in st.session_state.metal_settings[metal]:
+                                    del st.session_state.metal_settings[metal][field]
+                            st.rerun()
+            
+            # Add new custom field
+            st.markdown("**Add New Custom Field:**")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_field_name = st.text_input("Field Name", key="new_custom_field", placeholder="e.g., Purity%, Labor Cost, etc.")
+            with col2:
+                if st.button("➕ Add Field", use_container_width=True):
+                    if not new_field_name:
+                        st.error("Field name cannot be empty")
+                    elif new_field_name in st.session_state.custom_metal_fields:
+                        st.error("Field already exists")
+                    elif not new_field_name.replace(' ', '').replace('%', '').replace('_', '').isalnum():
+                        st.error("Field name can only contain letters, numbers, spaces, underscores, and %")
+                    elif new_field_name in ['Metal', 'Rate (per gram)', 'Wastage %', 'Making %', 'rate', 'wastage', 'making', 'metal']:
+                        st.error("Field name conflicts with reserved field names")
+                    else:
+                        st.session_state.custom_metal_fields.append(new_field_name)
+                        # Add field to all metals with default value 0
+                        for metal in st.session_state.metal_settings:
+                            st.session_state.metal_settings[metal][new_field_name] = 0.0
+                        st.success(f"✅ Custom field '{new_field_name}' added!")
+                        st.rerun()
+    
+    # Build metal settings dataframe including custom fields
+    metals_data = []
+    for metal, settings in st.session_state.metal_settings.items():
+        row = {
+            'Metal': metal,
+            'Rate (per gram)': settings.get('rate', 0.0),
+            'Wastage %': settings.get('wastage', 0.0),
+            'Making %': settings.get('making', 0.0)
+        }
+        # Add custom fields
+        for field in st.session_state.custom_metal_fields:
+            row[field] = settings.get(field, 0.0)
+        metals_data.append(row)
+    
+    df_metals = pd.DataFrame(metals_data)
+    edited_metals = st.data_editor(
+        df_metals,
+        num_rows="dynamic",
+        width='stretch',
+        key="metals_editor"
+    )
+    
+    st.markdown("#### Tax Settings")
+    col1, col2 = st.columns(2)
+    with col1:
+        cgst = st.number_input("CGST %", value=st.session_state.cgst, min_value=0.0, format="%.2f")
+    with col2:
+        sgst = st.number_input("SGST %", value=st.session_state.sgst, min_value=0.0, format="%.2f")
+    
+    if st.button("💾 Save Settings", width='stretch'):
+        # Update metal settings
+        new_settings = {}
+        for _, row in edited_metals.iterrows():
+            if row['Metal']:
+                metal_config = {
+                    'rate': float(row['Rate (per gram)']),
+                    'wastage': float(row['Wastage %']),
+                    'making': float(row['Making %'])
+                }
+                # Add custom fields
+                for field in st.session_state.custom_metal_fields:
+                    if field in row:
+                        metal_config[field] = float(row[field])
+                new_settings[row['Metal']] = metal_config
+        st.session_state.metal_settings = new_settings
+        st.session_state.cgst = cgst
+        st.session_state.sgst = sgst
+        st.success("✅ Settings saved successfully!")
 
 
 # ============================================================================

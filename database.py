@@ -419,6 +419,20 @@ class Database:
         conn.commit()
         conn.close()
     
+    def delete_invoice(self, invoice_id):
+        """Delete an invoice and its items"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Delete invoice items first
+        cursor.execute('DELETE FROM invoice_items WHERE invoice_id=?', (invoice_id,))
+        
+        # Delete the invoice
+        cursor.execute('DELETE FROM invoices WHERE id=?', (invoice_id,))
+        
+        conn.commit()
+        conn.close()
+    
     # Invoice operations
     def save_invoice(self, customer_id, invoice_no, items, cgst_percent, sgst_percent, discount_percent=0):
         """Save invoice with items"""
