@@ -256,13 +256,7 @@ def show_user_menu():
                             new_hash = hash_password(new_password)
                             auth_db.update_user_password(st.session_state.user_id, new_hash)
                             st.success("✅ Password updated successfully!")
-        
-        # Show "Back to Admin Login" button only for admins (but not when viewing as another user)
-        if st.session_state.get('user_role') == 'admin' and not st.session_state.get('admin_return_id'):
-            if st.button("🔙 Back to Admin Login", use_container_width=True, type="secondary"):
-                # Clear session state to return to login page
-                _clear_session_state()
-                st.rerun()
+                            st.rerun()
         
         if st.button("🚪 Logout", use_container_width=True):
             # Clear session state
@@ -271,10 +265,30 @@ def show_user_menu():
 
 
 def require_auth(db):
-    """Decorator to require authentication"""
+    """Decorator to require authentication with session timeout"""
+    from datetime import datetime, timedelta
+    
+    # Check if user is logged in
     if 'logged_in' not in st.session_state or not st.session_state.logged_in:
         show_login_page(db)
         return False
+    
+    # Initialize last_activity if not present
+    if 'last_activity' not in st.session_state:
+        st.session_state.last_activity = datetime.now()
+    
+    # Check for inactivity timeout (1 hour)
+    time_since_activity = datetime.now() - st.session_state.last_activity
+    if time_since_activity > timedelta(hours=1):
+        # Session expired due to inactivity
+        st.warning("⏱️ Your session has expired due to inactivity. Please login again.")
+        _clear_session_state()
+        show_login_page(db)
+        return False
+    
+    # Update last activity time
+    st.session_state.last_activity = datetime.now()
+    
     return True
 
 
