@@ -249,6 +249,10 @@ def init_session_state():
             'Silver': {'rate': 75.0, 'wastage': 3.0, 'making': 8.0}
         }
     
+    # Custom fields configuration (admin-only feature)
+    if 'custom_metal_fields' not in st.session_state:
+        st.session_state.custom_metal_fields = []  # List of field names
+    
     if 'cgst' not in st.session_state:
         st.session_state.cgst = 1.5
     
@@ -1161,15 +1165,57 @@ with tab5:
     
     st.markdown("#### Metal Settings")
     
-    # Edit metal settings
+    # Admin-only: Manage custom fields
+    if require_admin():
+        with st.expander("➕ Manage Custom Fields (Admin Only)"):
+            st.info("💡 Add custom fields to track additional metal properties beyond Rate, Wastage, and Making charges.")
+            
+            # Show current custom fields
+            if st.session_state.custom_metal_fields:
+                st.markdown("**Current Custom Fields:**")
+                for i, field in enumerate(st.session_state.custom_metal_fields):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.text(f"• {field}")
+                    with col2:
+                        if st.button("🗑️", key=f"delete_custom_field_{i}"):
+                            st.session_state.custom_metal_fields.pop(i)
+                            # Remove field from all metals
+                            for metal in st.session_state.metal_settings:
+                                if field in st.session_state.metal_settings[metal]:
+                                    del st.session_state.metal_settings[metal][field]
+                            st.rerun()
+            
+            # Add new custom field
+            st.markdown("**Add New Custom Field:**")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_field_name = st.text_input("Field Name", key="new_custom_field", placeholder="e.g., Purity%, Labor Cost, etc.")
+            with col2:
+                if st.button("➕ Add Field", use_container_width=True):
+                    if new_field_name and new_field_name not in st.session_state.custom_metal_fields:
+                        st.session_state.custom_metal_fields.append(new_field_name)
+                        # Add field to all metals with default value 0
+                        for metal in st.session_state.metal_settings:
+                            st.session_state.metal_settings[metal][new_field_name] = 0.0
+                        st.success(f"✅ Custom field '{new_field_name}' added!")
+                        st.rerun()
+                    elif new_field_name in st.session_state.custom_metal_fields:
+                        st.error("Field already exists")
+    
+    # Build metal settings dataframe including custom fields
     metals_data = []
     for metal, settings in st.session_state.metal_settings.items():
-        metals_data.append({
+        row = {
             'Metal': metal,
-            'Rate (per gram)': settings['rate'],
-            'Wastage %': settings['wastage'],
-            'Making %': settings['making']
-        })
+            'Rate (per gram)': settings.get('rate', 0.0),
+            'Wastage %': settings.get('wastage', 0.0),
+            'Making %': settings.get('making', 0.0)
+        }
+        # Add custom fields
+        for field in st.session_state.custom_metal_fields:
+            row[field] = settings.get(field, 0.0)
+        metals_data.append(row)
     
     df_metals = pd.DataFrame(metals_data)
     edited_metals = st.data_editor(
@@ -1191,11 +1237,16 @@ with tab5:
         new_settings = {}
         for _, row in edited_metals.iterrows():
             if row['Metal']:
-                new_settings[row['Metal']] = {
+                metal_config = {
                     'rate': float(row['Rate (per gram)']),
                     'wastage': float(row['Wastage %']),
                     'making': float(row['Making %'])
                 }
+                # Add custom fields
+                for field in st.session_state.custom_metal_fields:
+                    if field in row:
+                        metal_config[field] = float(row[field])
+                new_settings[row['Metal']] = metal_config
         st.session_state.metal_settings = new_settings
         st.session_state.cgst = cgst
         st.session_state.sgst = sgst
