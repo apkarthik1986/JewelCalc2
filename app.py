@@ -575,10 +575,19 @@ with tab2:
                 
                 st.dataframe(pd.DataFrame(items_display), width='stretch', hide_index=True)
                 
-                # Remove item button
-                if st.button("🗑️ Remove Last Item"):
-                    st.session_state.current_invoice_items.pop()
-                    st.rerun()
+                # Select and delete item
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    item_to_delete = st.selectbox(
+                        "Select item to delete",
+                        options=range(len(st.session_state.current_invoice_items)),
+                        format_func=lambda i: f"Item {i+1}: {st.session_state.current_invoice_items[i]['metal']} - {st.session_state.current_invoice_items[i]['weight']:.3f}g",
+                        key="delete_invoice_item"
+                    )
+                with col2:
+                    if st.button("🗑️ Delete Selected Item", use_container_width=True):
+                        st.session_state.current_invoice_items.pop(item_to_delete)
+                        st.rerun()
                 
                 # Invoice summary
                 st.markdown("#### Invoice Summary")
@@ -701,39 +710,34 @@ with tab3:
                 # PDF download (direct download)
                 with col1:
                     pdf_buffer = create_invoice_pdf(invoice, items_df, customer)
-                    st.download_button(
+                    if st.download_button(
                         label="📄 Download PDF",
                         data=pdf_buffer,
                         file_name=f"{row['invoice_no']}.pdf",
                         mime="application/pdf",
                         key=f"dl_{row['invoice_no']}"
-                    )
+                    ):
+                        st.success(f"✅ Invoice {row['invoice_no']}.pdf is ready for download!")
                 
-                # Print (opens in new tab with printer selection)
+                # Delete Invoice
                 with col2:
-                    pdf_buffer_print = create_invoice_pdf(invoice, items_df, customer)
-                    import base64
-                    b64 = base64.b64encode(pdf_buffer_print.read()).decode()
-                    # JavaScript to trigger print dialog which allows printer selection
-                    print_js = f"""
-                    <script>
-                    function printPDF_{row['invoice_no'].replace('-', '_')}() {{
-                        var pdfWindow = window.open("");
-                        pdfWindow.document.write(
-                            "<iframe width='100%' height='100%' src='data:application/pdf;base64,{b64}'></iframe>"
-                        );
-                        setTimeout(function() {{
-                            pdfWindow.print();
-                        }}, 250);
-                    }}
-                    </script>
-                    <button onclick="printPDF_{row['invoice_no'].replace('-', '_')}()" 
-                            style="background-color:#ff4b4b; color:white; border:none; 
-                            padding:0.5rem 1rem; border-radius:0.5rem; cursor:pointer;">
-                        🖨️ Print
-                    </button>
-                    """
-                    st.markdown(print_js, unsafe_allow_html=True)
+                    if st.button("🗑️ Delete Invoice", key=f"delete_{row['invoice_no']}", use_container_width=True):
+                        st.session_state[f'confirm_delete_invoice_{invoice["id"]}'] = True
+                        st.rerun()
+                    
+                    if st.session_state.get(f'confirm_delete_invoice_{invoice["id"]}'):
+                        st.error("⚠️ Are you sure? This cannot be undone!")
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            if st.button("✅ Yes, Delete", key=f"confirm_delete_{row['invoice_no']}", use_container_width=True):
+                                db.delete_invoice(invoice['id'])
+                                del st.session_state[f'confirm_delete_invoice_{invoice["id"]}']
+                                st.success("✅ Invoice deleted!")
+                                st.rerun()
+                        with col_b:
+                            if st.button("❌ Cancel", key=f"cancel_delete_{row['invoice_no']}", use_container_width=True):
+                                del st.session_state[f'confirm_delete_invoice_{invoice["id"]}']
+                                st.rerun()
                 
                 # Thermal print
                 with col3:
@@ -804,7 +808,11 @@ with tab3:
                             edited_df = st.data_editor(
                                 df_edit,
                                 column_config={
-                                    'metal': st.column_config.TextColumn('metal'),
+                                    'metal': st.column_config.SelectboxColumn(
+                                        'metal',
+                                        options=list(st.session_state.metal_settings.keys()),
+                                        required=True
+                                    ),
                                     'weight': st.column_config.NumberColumn('weight', format="%.3f"),
                                     'rate': st.column_config.NumberColumn('rate', format="%.2f"),
                                     'wastage_percent': st.column_config.NumberColumn('wastage_percent', format="%.2f"),
@@ -882,23 +890,8 @@ with tab3:
                         # Persist recalculated rows back to session state
                         st.session_state.temp_edit_items = recalculated_rows
                         
-                        # Display recalculated table (read-friendly)
-                        items_edit_display = []
-                        for i, item in enumerate(recalculated_rows):
-                            items_edit_display.append({
-                                'No.': i + 1,
-                                'Metal': item['metal'],
-                                'Weight': f"{item['weight']:.3f}g",
-                                'Rate': format_currency(item['rate']),
-                                'Item Value': format_currency(item['item_value']),
-                                'Wastage': format_currency(item['wastage_amount']),
-                                'Making': format_currency(item['making_amount']),
-                                'Total': format_currency(item['line_total'])
-                            })
-                        st.dataframe(pd.DataFrame(items_edit_display), width='stretch', hide_index=True)
-                        
                         # Add / remove item buttons (affect session_state.temp_edit_items)
-                        col_a, col_b = st.columns([1, 1])
+                        col_a, col_b, col_c = st.columns([1, 2, 1])
                         with col_a:
                             if st.button("➕ Add Empty Item", key=f"add_empty_{invoice['id']}"):
                                 st.session_state.temp_edit_items.append({
@@ -914,9 +907,16 @@ with tab3:
                                 })
                                 st.rerun()
                         with col_b:
-                            if st.button("🗑️ Remove Last Item", key=f"remove_last_{invoice['id']}"):
-                                if st.session_state.temp_edit_items:
-                                    st.session_state.temp_edit_items.pop()
+                            if st.session_state.temp_edit_items:
+                                item_to_delete_edit = st.selectbox(
+                                    "Select item to delete",
+                                    options=range(len(st.session_state.temp_edit_items)),
+                                    format_func=lambda i: f"Item {i+1}: {st.session_state.temp_edit_items[i]['metal']} - {st.session_state.temp_edit_items[i]['weight']:.3f}g",
+                                    key=f"delete_edit_item_{invoice['id']}"
+                                )
+                        with col_c:
+                            if st.session_state.temp_edit_items and st.button("🗑️ Delete Selected", key=f"delete_selected_{invoice['id']}", use_container_width=True):
+                                st.session_state.temp_edit_items.pop(item_to_delete_edit)
                                 st.rerun()
                         
                         # Edit discount (live)
