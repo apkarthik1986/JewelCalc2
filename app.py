@@ -1173,13 +1173,13 @@ with tab5:
             # Show current custom fields
             if st.session_state.custom_metal_fields:
                 st.markdown("**Current Custom Fields:**")
-                for i, field in enumerate(st.session_state.custom_metal_fields):
+                for field in st.session_state.custom_metal_fields:
                     col1, col2 = st.columns([3, 1])
                     with col1:
                         st.text(f"• {field}")
                     with col2:
-                        if st.button("🗑️", key=f"delete_custom_field_{i}"):
-                            st.session_state.custom_metal_fields.pop(i)
+                        if st.button("🗑️", key=f"delete_custom_field_{field}"):
+                            st.session_state.custom_metal_fields.remove(field)
                             # Remove field from all metals
                             for metal in st.session_state.metal_settings:
                                 if field in st.session_state.metal_settings[metal]:
@@ -1193,15 +1193,21 @@ with tab5:
                 new_field_name = st.text_input("Field Name", key="new_custom_field", placeholder="e.g., Purity%, Labor Cost, etc.")
             with col2:
                 if st.button("➕ Add Field", use_container_width=True):
-                    if new_field_name and new_field_name not in st.session_state.custom_metal_fields:
+                    if not new_field_name:
+                        st.error("Field name cannot be empty")
+                    elif new_field_name in st.session_state.custom_metal_fields:
+                        st.error("Field already exists")
+                    elif not new_field_name.replace(' ', '').replace('%', '').replace('_', '').isalnum():
+                        st.error("Field name can only contain letters, numbers, spaces, underscores, and %")
+                    elif new_field_name in ['Metal', 'Rate (per gram)', 'Wastage %', 'Making %', 'rate', 'wastage', 'making', 'metal']:
+                        st.error("Field name conflicts with reserved field names")
+                    else:
                         st.session_state.custom_metal_fields.append(new_field_name)
                         # Add field to all metals with default value 0
                         for metal in st.session_state.metal_settings:
                             st.session_state.metal_settings[metal][new_field_name] = 0.0
                         st.success(f"✅ Custom field '{new_field_name}' added!")
                         st.rerun()
-                    elif new_field_name in st.session_state.custom_metal_fields:
-                        st.error("Field already exists")
     
     # Build metal settings dataframe including custom fields
     metals_data = []
